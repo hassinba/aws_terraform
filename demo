@@ -1,0 +1,219 @@
+provider "aws" {
+  region     = "us-east-1"
+  access_key = ""
+  secret_key = ""
+}
+
+#Create VPC
+resource "aws_vpc" "vpc-1" {
+  cidr_block = "10.0.0.0/20"
+  tags = {
+    Name = "Site_1_VPC_Managed_By_Terraform"
+  }
+
+}
+
+#Create Public Subnet 1
+resource "aws_subnet" "public-subnet-1" {
+  vpc_id            = "${aws_vpc.vpc-1.id}"
+  cidr_block        = "10.0.14.0/24"
+  availability_zone = "us-east-1a"
+  tags = {
+    Name = "managed-by-terraform"
+  }
+
+}
+
+#Create Public Subnet 2
+resource "aws_subnet" "public-subnet-2" {
+  vpc_id            = "${aws_vpc.vpc-1.id}"
+  cidr_block        = "10.0.15.0/24"
+  availability_zone = "us-east-1b"
+  tags = {
+    Name = "managed-by-terraform"
+  }
+
+}
+
+#Create Private Subnet 1
+resource "aws_subnet" "private-subnet-1" {
+  vpc_id            = "${aws_vpc.vpc-1.id}"
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-east-1a"
+  tags = {
+    Name = "managed-by-terraform"
+  }
+
+}
+
+#Create Private Subnet 2
+resource "aws_subnet" "private-subnet-2" {
+  vpc_id            = "${aws_vpc.vpc-1.id}"
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+  tags = {
+    Name = "managed-by-terraform"
+  }
+
+}
+
+#Create NAT Gateway Subnet 1
+resource "aws_subnet" "nat-gateway-1" {
+  vpc_id            = "${aws_vpc.vpc-1.id}"
+  cidr_block        = "10.0.12.0/25"
+  availability_zone = "us-east-1a"
+  tags = {
+    Name = "managed-by-terraform"
+  }
+
+}
+
+#Create NAT Gateway Subnet 2
+resource "aws_subnet" "nat-gateway-2" {
+  vpc_id            = "${aws_vpc.vpc-1.id}"
+  cidr_block        = "10.0.12.128/25"
+  availability_zone = "us-east-1b"
+  tags = {
+    Name = "managed-by-terraform"
+  }
+
+}
+
+#Create Security Group for Application Load Balancers
+resource "aws_security_group" "alb_in" {
+  name        = "alb_in"
+  description = "Allow 80/443 Inbound to ALB - managed by terraform"
+  vpc_id      = "${aws_vpc.vpc-1.id}"
+
+  ingress {
+    description = "80 In - managed by terraform"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    description = "443 In - managed by terraform"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    description = "ALB Outbound Internet - managed by terraform"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+#Create Security Group for EC2 Web Servers
+resource "aws_security_group" "ec2_web" {
+  name        = "ec2_web"
+  description = "80/443 In from ALB - managed by terraform"
+  vpc_id      = "${aws_vpc.vpc-1.id}"
+
+  ingress {
+    description     = "80 In from ALB - managed by terraform"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = ["${aws_security_group.alb_in.id}"]
+  }
+  ingress {
+    description     = "443 In from ALB - managed by terraform"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = ["${aws_security_group.alb_in.id}"]
+  }
+  egress {
+    description = "ec2_web Outbound Internet - managed by terraform"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+#Create Internet Gateway
+resource "aws_internet_gateway" "internet-gw" {
+  vpc_id = "${aws_vpc.vpc-1.id}"
+
+  tags = {
+    Name = "igw-managed-by-terraform"
+  }
+}
+
+#Create Elastic IP ip_address
+resource "aws_eip" "eip" {
+
+}
+
+
+#Create NAT Gateway
+resource "aws_nat_gateway" "ngw" {
+  allocation_id = "${aws_eip.eip.id}"
+  subnet_id     = "${aws_subnet.nat-gateway-1.id}"
+
+  tags = {
+    Name = "NAT Gateway-managed-by-terraform"
+  }
+}
+
+#Create Route Table for Public Subnet
+resource "aws_route_table" "rt-pub" {
+  vpc_id = "${aws_vpc.vpc-1.id}"
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_internet_gateway.internet-gw.id}"
+  }
+  tags = {
+    Name = "pub-rt-managed-by-terraform"
+  }
+}
+
+#Create Route Table for Private Subnet
+resource "aws_route_table" "rt-priv" {
+  vpc_id           = "${aws_vpc.vpc-1.id}"
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_nat_gateway.ngw.id}"
+  }
+  tags = {
+    Name = "priv-rt-managed-by-terraform"
+  }
+}
+
+#Create Customer Gateway
+resource "aws_customer_gateway" "cg-1" {
+  type       = "ipsec.1"
+  bgp_asn    = 65000
+  ip_address = "96.241.146.126"
+
+  tags = {
+    Name = "managed-by-terraform"
+  }
+
+}
+
+
+#Create Virtual Private Gateway
+resource "aws_vpn_gateway" "vpg-1" {
+  vpc_id          = "${aws_vpc.vpc-1.id}"
+  amazon_side_asn = 7224
+
+  tags = {
+    Name = "managed-by-terraform"
+  }
+}
+
+#Create IPsec VPN Tunnel - disabled
+#resource "aws_vpn_connection" "vpn-1" {
+#  vpn_gateway_id      = "${aws_vpn_gateway.vpg-1.id}"
+#  customer_gateway_id = "${aws_customer_gateway.cg-1.id}"
+#  type                = "ipsec.1"
+#}
